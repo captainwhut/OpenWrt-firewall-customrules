@@ -1,0 +1,26 @@
+# This file is interpreted as shell script.
+# Put your custom iptables rules here, they will
+# be executed with each firewall (re-)start.
+
+# Internal uci firewall chains are flushed and recreated on reload, so
+# put custom rules into the root chains e.g. INPUT or FORWARD or into the
+# special user chains, e.g. input_wan_rule or postrouting_lan_rule.
+
+TCA="tc class add dev wlan1"
+TFA="tc filter add dev wlan1"
+tc qdisc del dev wlan1 root
+tc qdisc add dev wlan1 root handle 1: htb
+tc class add dev wlan1 parent 1: classid 1:1 htb rate 8320kbit            #这个8320是上行总速度
+$TCA parent 1:1 classid 1:11 htb rate 4000kbit ceil 8000kbit prio 2     #这个是11号通道,优先级为3
+$TCA parent 1:1 classid 1:12 htb rate 160kbit ceil 320kbit prio 1   #12号通道,优先级为2
+
+$TFA parent 1:0 prio 2 protocol ip handle 11 fw flowid 1:11             
+$TFA parent 1:0 prio 1 protocol ip handle 12 fw flowid 1:12
+
+#iptables决定走哪些通道
+
+iptables -t mangle -A POSTROUTING -p tcp -m tcp --sport 8001 -j MARK --set-mark 12   #源端口为8001，通道设为12
+iptables -t mangle -A POSTROUTING -p tcp -m tcp --sport 8001 -j RETURN
+
+iptables -t mangle -A POSTROUTING -p tcp -m tcp --sport 8002 -j MARK --set-mark 11   #源端口为8002，通道设为11
+iptables -t mangle -A POSTROUTING -p tcp -m tcp --sport 8002 -j RETURN
